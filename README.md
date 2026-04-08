@@ -131,7 +131,7 @@ flowpay/
 ### 1 — Clone the repo
 
 ```bash
-git clone https://github.com/<your-username>/flowpay.git
+git clone https://github.com/SiLioLabs/PayFlow.git
 cd flowpay
 ```
 
