@@ -2,7 +2,7 @@
 
 use super::*;
 use soroban_sdk::{
-    testutils::{Address as _, Ledger},
+    testutils::{Address as _, Ledger, Events},
     token::{Client as TokenClient, StellarAssetClient},
     Address, Env,
 };
