@@ -1,6 +1,7 @@
 #![no_std]
 
 mod test;
+mod validation;
 
 use soroban_sdk::{
     contract, contractimpl, contracttype,
@@ -57,8 +58,8 @@ impl FlowPay {
     ) {
         user.require_auth();
 
-        assert!(amount > 0, "amount must be positive");
-        assert!(interval > 0, "interval must be positive");
+        validation::require_positive_amount(amount);
+        validation::require_positive_interval(interval);
 
         let sub = Subscription {
             merchant,
@@ -91,13 +92,10 @@ impl FlowPay {
             .get(&key)
             .expect("no subscription found");
 
-        assert!(sub.active, "subscription is not active");
+        validation::require_active_subscription(sub.active);
 
         let now = env.ledger().timestamp();
-        assert!(
-            now >= sub.last_charged + sub.interval,
-            "interval not elapsed yet"
-        );
+        validation::require_charge_interval_elapsed(now, sub.last_charged, sub.interval);
 
         // Pull the token address stored at init
         let token_addr: Address = env
@@ -129,7 +127,7 @@ impl FlowPay {
     pub fn pay_per_use(env: Env, user: Address, amount: i128) {
         user.require_auth();
 
-        assert!(amount > 0, "amount must be positive");
+        validation::require_positive_amount(amount);
 
         let key = DataKey::Subscription(user.clone());
         let sub: Subscription = env
@@ -138,7 +136,7 @@ impl FlowPay {
             .get(&key)
             .expect("no subscription found");
 
-        assert!(sub.active, "subscription is not active");
+        validation::require_active_subscription(sub.active);
 
         let token_addr: Address = env
             .storage()
