@@ -1,11 +1,13 @@
 #![no_std]
 
+mod errors;
 mod test;
 
 use soroban_sdk::{
     contract, contractimpl, contracttype,
     token, Address, Env, Symbol,
 };
+use crate::errors::ContractError;
 
 // ── Storage keys ──────────────────────────────────────────────────────────────
 
@@ -41,7 +43,7 @@ impl FlowPay {
     /// each subscription now carries its own token address.
     pub fn initialize(env: Env, token: Address) {
         if env.storage().instance().has(&DataKey::Token) {
-            panic!("already initialized");
+            env.panic_with_error(ContractError::AlreadyInitialized);
         }
         env.storage().instance().set(&DataKey::Token, &token);
     }
@@ -63,8 +65,12 @@ impl FlowPay {
     ) {
         user.require_auth();
 
-        assert!(amount > 0, "amount must be positive");
-        assert!(interval > 0, "interval must be positive");
+        if amount <= 0 {
+            env.panic_with_error(ContractError::AmountMustBePositive);
+        }
+        if interval == 0 {
+            env.panic_with_error(ContractError::IntervalMustBePositive);
+        }
 
         let sub = Subscription {
             merchant,
@@ -97,16 +103,15 @@ impl FlowPay {
             .storage()
             .persistent()
             .get(&key)
-            .expect("no subscription found");
+            .unwrap_or_else(|| env.panic_with_error(ContractError::NoSubscriptionFound));
 
         assert!(sub.active, "subscription is not active");
         assert!(!sub.paused, "subscription is paused");
 
         let now = env.ledger().timestamp();
-        assert!(
-            now >= sub.last_charged + sub.interval,
-            "interval not elapsed yet"
-        );
+        if now < sub.last_charged + sub.interval {
+            env.panic_with_error(ContractError::IntervalNotElapsed);
+        }
 
         let token = token::Client::new(&env, &sub.token);
         token.transfer_from(
@@ -130,14 +135,16 @@ impl FlowPay {
     pub fn pay_per_use(env: Env, user: Address, amount: i128) {
         user.require_auth();
 
-        assert!(amount > 0, "amount must be positive");
+        if amount <= 0 {
+            env.panic_with_error(ContractError::AmountMustBePositive);
+        }
 
         let key = DataKey::Subscription(user.clone());
         let sub: Subscription = env
             .storage()
             .persistent()
             .get(&key)
-            .expect("no subscription found");
+            .unwrap_or_else(|| env.panic_with_error(ContractError::NoSubscriptionFound));
 
         assert!(sub.active, "subscription is not active");
         assert!(!sub.paused, "subscription is paused");
@@ -165,7 +172,7 @@ impl FlowPay {
             .storage()
             .persistent()
             .get(&key)
-            .expect("no subscription found");
+            .unwrap_or_else(|| env.panic_with_error(ContractError::NoSubscriptionFound));
 
         sub.active = false;
         env.storage().persistent().set(&key, &sub);
