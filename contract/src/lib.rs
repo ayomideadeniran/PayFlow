@@ -1,5 +1,6 @@
 #![no_std]
 
+mod storage;
 mod test;
 
 use soroban_sdk::{
@@ -38,10 +39,10 @@ impl FlowPay {
     /// One-time initialisation: set the token contract this subscription
     /// manager will move (e.g. native XLM or a USDC SAC address).
     pub fn initialize(env: Env, token: Address) {
-        if env.storage().instance().has(&DataKey::Token) {
+        if storage::has_token(&env) {
             panic!("already initialized");
         }
-        env.storage().instance().set(&DataKey::Token, &token);
+        storage::set_token(&env, &token);
     }
 
     /// User creates (or updates) a subscription to a merchant.
@@ -68,9 +69,7 @@ impl FlowPay {
             active: true,
         };
 
-        env.storage()
-            .persistent()
-            .set(&DataKey::Subscription(user.clone()), &sub);
+        storage::set_subscription(&env, &user, &sub);
 
         env.events().publish(
             (Symbol::new(&env, "subscribed"), user),
@@ -83,12 +82,7 @@ impl FlowPay {
     /// Anyone can call this (your backend / keeper service will call it).
     /// The contract verifies the interval has elapsed before transferring.
     pub fn charge(env: Env, user: Address) {
-        let key = DataKey::Subscription(user.clone());
-
-        let mut sub: Subscription = env
-            .storage()
-            .persistent()
-            .get(&key)
+        let mut sub = storage::get_subscription(&env, &user)
             .expect("no subscription found");
 
         assert!(sub.active, "subscription is not active");
@@ -100,10 +94,7 @@ impl FlowPay {
         );
 
         // Pull the token address stored at init
-        let token_addr: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Token)
+        let token_addr = storage::get_token(&env)
             .expect("not initialized");
 
         // Transfer from user → merchant using the allowance the user granted
@@ -116,7 +107,7 @@ impl FlowPay {
         );
 
         sub.last_charged = now;
-        env.storage().persistent().set(&key, &sub);
+        storage::set_subscription(&env, &user, &sub);
 
         env.events().publish(
             (Symbol::new(&env, "charged"), user),
@@ -131,19 +122,12 @@ impl FlowPay {
 
         assert!(amount > 0, "amount must be positive");
 
-        let key = DataKey::Subscription(user.clone());
-        let sub: Subscription = env
-            .storage()
-            .persistent()
-            .get(&key)
+        let sub = storage::get_subscription(&env, &user)
             .expect("no subscription found");
 
         assert!(sub.active, "subscription is not active");
 
-        let token_addr: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Token)
+        let token_addr = storage::get_token(&env)
             .expect("not initialized");
 
         let token = token::Client::new(&env, &token_addr);
@@ -164,15 +148,11 @@ impl FlowPay {
     pub fn cancel(env: Env, user: Address) {
         user.require_auth();
 
-        let key = DataKey::Subscription(user.clone());
-        let mut sub: Subscription = env
-            .storage()
-            .persistent()
-            .get(&key)
+        let mut sub = storage::get_subscription(&env, &user)
             .expect("no subscription found");
 
         sub.active = false;
-        env.storage().persistent().set(&key, &sub);
+        storage::set_subscription(&env, &user, &sub);
 
         env.events()
             .publish((Symbol::new(&env, "cancelled"), user), ());
@@ -180,8 +160,6 @@ impl FlowPay {
 
     /// Read a subscription (view function).
     pub fn get_subscription(env: Env, user: Address) -> Option<Subscription> {
-        env.storage()
-            .persistent()
-            .get(&DataKey::Subscription(user))
+        storage::get_subscription(&env, &user)
     }
 }
