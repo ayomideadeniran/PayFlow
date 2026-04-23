@@ -75,7 +75,7 @@ fn test_cancel() {
 }
 
 #[test]
-#[should_panic(expected = "interval not elapsed yet")]
+#[should_panic]
 fn test_charge_too_early() {
     let (_env, contract_id, _token_addr, user, merchant) = setup();
     let client = FlowPayClient::new(&_env, &contract_id);

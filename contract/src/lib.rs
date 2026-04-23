@@ -1,11 +1,13 @@
 #![no_std]
 
+mod errors;
 mod test;
 
 use soroban_sdk::{
     contract, contractimpl, contracttype,
     token, Address, Env, Symbol,
 };
+use crate::errors::ContractError;
 
 // ── Storage keys ──────────────────────────────────────────────────────────────
 
@@ -39,7 +41,7 @@ impl FlowPay {
     /// manager will move (e.g. native XLM or a USDC SAC address).
     pub fn initialize(env: Env, token: Address) {
         if env.storage().instance().has(&DataKey::Token) {
-            panic!("already initialized");
+            env.panic_with_error(ContractError::AlreadyInitialized);
         }
         env.storage().instance().set(&DataKey::Token, &token);
     }
@@ -57,8 +59,12 @@ impl FlowPay {
     ) {
         user.require_auth();
 
-        assert!(amount > 0, "amount must be positive");
-        assert!(interval > 0, "interval must be positive");
+        if amount <= 0 {
+            env.panic_with_error(ContractError::AmountMustBePositive);
+        }
+        if interval == 0 {
+            env.panic_with_error(ContractError::IntervalMustBePositive);
+        }
 
         let sub = Subscription {
             merchant,
@@ -89,22 +95,23 @@ impl FlowPay {
             .storage()
             .persistent()
             .get(&key)
-            .expect("no subscription found");
+            .unwrap_or_else(|| env.panic_with_error(ContractError::NoSubscriptionFound));
 
-        assert!(sub.active, "subscription is not active");
+        if !sub.active {
+            env.panic_with_error(ContractError::SubscriptionInactive);
+        }
 
         let now = env.ledger().timestamp();
-        assert!(
-            now >= sub.last_charged + sub.interval,
-            "interval not elapsed yet"
-        );
+        if now < sub.last_charged + sub.interval {
+            env.panic_with_error(ContractError::IntervalNotElapsed);
+        }
 
         // Pull the token address stored at init
         let token_addr: Address = env
             .storage()
             .instance()
             .get(&DataKey::Token)
-            .expect("not initialized");
+            .unwrap_or_else(|| env.panic_with_error(ContractError::NotInitialized));
 
         // Transfer from user → merchant using the allowance the user granted
         let token = token::Client::new(&env, &token_addr);
@@ -129,22 +136,26 @@ impl FlowPay {
     pub fn pay_per_use(env: Env, user: Address, amount: i128) {
         user.require_auth();
 
-        assert!(amount > 0, "amount must be positive");
+        if amount <= 0 {
+            env.panic_with_error(ContractError::AmountMustBePositive);
+        }
 
         let key = DataKey::Subscription(user.clone());
         let sub: Subscription = env
             .storage()
             .persistent()
             .get(&key)
-            .expect("no subscription found");
+            .unwrap_or_else(|| env.panic_with_error(ContractError::NoSubscriptionFound));
 
-        assert!(sub.active, "subscription is not active");
+        if !sub.active {
+            env.panic_with_error(ContractError::SubscriptionInactive);
+        }
 
         let token_addr: Address = env
             .storage()
             .instance()
             .get(&DataKey::Token)
-            .expect("not initialized");
+            .unwrap_or_else(|| env.panic_with_error(ContractError::NotInitialized));
 
         let token = token::Client::new(&env, &token_addr);
         token.transfer_from(
@@ -169,7 +180,7 @@ impl FlowPay {
             .storage()
             .persistent()
             .get(&key)
-            .expect("no subscription found");
+            .unwrap_or_else(|| env.panic_with_error(ContractError::NoSubscriptionFound));
 
         sub.active = false;
         env.storage().persistent().set(&key, &sub);
