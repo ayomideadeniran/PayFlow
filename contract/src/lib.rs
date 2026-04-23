@@ -45,7 +45,7 @@ impl FlowPay {
         if env.storage().instance().has(&DataKey::Token) {
             env.panic_with_error(ContractError::AlreadyInitialized);
         }
-        env.storage().instance().set(&DataKey::Token, &token);
+        storage::set_token(&env, &token);
     }
 
     /// User creates (or updates) a subscription to a merchant.
@@ -81,9 +81,7 @@ impl FlowPay {
             token,
         };
 
-        env.storage()
-            .persistent()
-            .set(&DataKey::Subscription(user.clone()), &sub);
+        storage::set_subscription(&env, &user, &sub);
 
         env.events().publish(
             (Symbol::new(&env, "subscribed"), user),
@@ -122,7 +120,7 @@ impl FlowPay {
         );
 
         sub.last_charged = now;
-        env.storage().persistent().set(&key, &sub);
+        storage::set_subscription(&env, &user, &sub);
 
         events::publish_charged(&env, &user, &sub, now);
     }
@@ -169,7 +167,7 @@ impl FlowPay {
             .unwrap_or_else(|| env.panic_with_error(ContractError::NoSubscriptionFound));
 
         sub.active = false;
-        env.storage().persistent().set(&key, &sub);
+        storage::set_subscription(&env, &user, &sub);
 
         events::publish_cancelled(&env, &user);
     }
@@ -221,8 +219,6 @@ impl FlowPay {
 
     /// Read a subscription (view function).
     pub fn get_subscription(env: Env, user: Address) -> Option<Subscription> {
-        env.storage()
-            .persistent()
-            .get(&DataKey::Subscription(user))
+        storage::get_subscription(&env, &user)
     }
 }
