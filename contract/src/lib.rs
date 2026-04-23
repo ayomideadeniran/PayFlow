@@ -13,7 +13,7 @@ use soroban_sdk::{
 #[derive(Clone)]
 pub enum DataKey {
     Subscription(Address), // user → Subscription
-    Token,                 // the XLM / token contract address
+    Token,                 // optional default token (kept for backward compat)
 }
 
 // ── Data types ────────────────────────────────────────────────────────────────
@@ -26,7 +26,7 @@ pub struct Subscription {
     pub interval: u64,      // seconds between charges
     pub last_charged: u64,  // ledger timestamp of last charge
     pub active: bool,
-    pub paused: bool,       // true if user has temporarily halted charges
+    pub token: Address,     // SAC token used for this subscription
 }
 
 // ── Contract ──────────────────────────────────────────────────────────────────
@@ -36,8 +36,9 @@ pub struct FlowPay;
 
 #[contractimpl]
 impl FlowPay {
-    /// One-time initialisation: set the token contract this subscription
-    /// manager will move (e.g. native XLM or a USDC SAC address).
+    /// Optional one-time initialisation: set a default token for the contract.
+    /// This is kept for backward compatibility but is no longer required —
+    /// each subscription now carries its own token address.
     pub fn initialize(env: Env, token: Address) {
         if env.storage().instance().has(&DataKey::Token) {
             panic!("already initialized");
@@ -47,6 +48,9 @@ impl FlowPay {
 
     /// User creates (or updates) a subscription to a merchant.
     ///
+    /// `token` is the SAC address of the token to use for this subscription
+    /// (e.g. native XLM or USDC). Each subscription can use a different token.
+    ///
     /// The user must have already called `approve()` on the token contract
     /// granting this contract an allowance >= amount.
     pub fn subscribe(
@@ -54,7 +58,8 @@ impl FlowPay {
         user: Address,
         merchant: Address,
         amount: i128,
-        interval: u64, // e.g. 2_592_000 for ~30 days
+        interval: u64,
+        token: Address,
     ) {
         user.require_auth();
 
@@ -67,7 +72,7 @@ impl FlowPay {
             interval,
             last_charged: env.ledger().timestamp(),
             active: true,
-            paused: false,
+            token,
         };
 
         env.storage()
@@ -76,7 +81,7 @@ impl FlowPay {
 
         env.events().publish(
             (Symbol::new(&env, "subscribed"), user),
-            (sub.merchant, sub.amount, sub.interval),
+            (sub.merchant, sub.amount, sub.interval, sub.token),
         );
     }
 
@@ -84,6 +89,7 @@ impl FlowPay {
     ///
     /// Anyone can call this (your backend / keeper service will call it).
     /// The contract verifies the interval has elapsed before transferring.
+    /// Uses the token stored on the subscription itself.
     pub fn charge(env: Env, user: Address) {
         let key = DataKey::Subscription(user.clone());
 
@@ -102,15 +108,7 @@ impl FlowPay {
             "interval not elapsed yet"
         );
 
-        // Pull the token address stored at init
-        let token_addr: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Token)
-            .expect("not initialized");
-
-        // Transfer from user → merchant using the allowance the user granted
-        let token = token::Client::new(&env, &token_addr);
+        let token = token::Client::new(&env, &sub.token);
         token.transfer_from(
             &env.current_contract_address(),
             &user,
@@ -128,7 +126,7 @@ impl FlowPay {
     }
 
     /// Pay-per-use microtransaction — charge an arbitrary amount right now,
-    /// no interval check. Useful for metered / usage-based billing.
+    /// no interval check. Uses the token stored on the subscription.
     pub fn pay_per_use(env: Env, user: Address, amount: i128) {
         user.require_auth();
 
@@ -144,13 +142,7 @@ impl FlowPay {
         assert!(sub.active, "subscription is not active");
         assert!(!sub.paused, "subscription is paused");
 
-        let token_addr: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Token)
-            .expect("not initialized");
-
-        let token = token::Client::new(&env, &token_addr);
+        let token = token::Client::new(&env, &sub.token);
         token.transfer_from(
             &env.current_contract_address(),
             &user,
