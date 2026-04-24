@@ -42,7 +42,9 @@ export default function Dashboard({ userKey, onSign, refreshTrigger }: Props) {
     }
   }, [userKey]);
 
-  useEffect(() => { load(); }, [load, refreshTrigger]);
+  useEffect(() => {
+    load();
+  }, [load, refreshTrigger]);
 
   async function handleCancel() {
     setActionStatus(null);
@@ -134,7 +136,11 @@ export default function Dashboard({ userKey, onSign, refreshTrigger }: Props) {
         /* Dynamic: color is error/success state-driven — inline color is intentional */
         <p
           className="action-status"
-          style={{ color: actionStatus.startsWith("Error") ? "var(--color-danger)" : "var(--color-success)" }}
+          style={{
+            color: actionStatus.startsWith("Error")
+              ? "var(--color-danger)"
+              : "var(--color-success)",
+          }}
         >
           {actionStatus}
         </p>
