@@ -233,6 +233,71 @@ fn test_initialize_backward_compat() {
     assert_eq!(client.get_subscription(&user).unwrap().token, token_b);
 }
 
+// ── Issue #11: next_charge_at view function ──────────────────────────────────
+
+/// next_charge_at() must return the correct timestamp for an active subscription.
+#[test]
+fn test_next_charge_at() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let amount: i128 = 5_0000000;
+    let interval: u64 = 30 * 24 * 60 * 60; // 30 days
+
+    let subscribe_time = env.ledger().timestamp();
+    client.subscribe(&user, &merchant, &amount, &interval, &token_addr);
+
+    // Should return last_charged + interval
+    let expected_next_charge = subscribe_time + interval;
+    assert_eq!(client.next_charge_at(&user), Some(expected_next_charge));
+}
+
+/// next_charge_at() must return None for a nonexistent subscription.
+#[test]
+fn test_next_charge_at_nonexistent() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    
+    let random = Address::generate(&env);
+    assert!(client.next_charge_at(&random).is_none());
+}
+
+/// next_charge_at() must return None for an inactive (cancelled) subscription.
+#[test]
+fn test_next_charge_at_inactive() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    client.subscribe(&user, &merchant, &1_0000000, &86400, &token_addr);
+    client.cancel(&user);
+
+    assert!(client.next_charge_at(&user).is_none());
+}
+
+/// next_charge_at() must update after a charge.
+#[test]
+fn test_next_charge_at_updates_after_charge() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let interval: u64 = 86400;
+    client.subscribe(&user, &merchant, &1_0000000, &interval, &token_addr);
+
+    let initial_next_charge = client.next_charge_at(&user).unwrap();
+
+    // Advance time past interval
+    env.ledger().with_mut(|l| {
+        l.timestamp += interval + 1;
+    });
+
+    client.charge(&user);
+
+    // After charge, next_charge_at should be updated to new last_charged + interval
+    let new_next_charge = client.next_charge_at(&user).unwrap();
+    assert!(new_next_charge > initial_next_charge, "next_charge_at should increase after charge");
+    assert_eq!(new_next_charge, env.ledger().timestamp() + interval);
+}
+
 // ── Issue #7: input-validation guards ────────────────────────────────────────
 
 /// subscribe() must panic when amount = 0.
