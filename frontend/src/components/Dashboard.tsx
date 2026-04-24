@@ -1,5 +1,6 @@
-import React, { useState } from "react";
-import { buildCancelTx, buildPayPerUseTx } from "../stellar";
+import React, { useEffect, useState, useCallback } from "react";
+import { getSubscription, buildCancelTx, buildPayPerUseTx } from "../stellar";
+import { friendlyError } from "../utils/errors";
 import SubscriptionCardSkeleton from "./Skeleton";
 import { useSubscription } from "../hooks/useSubscription";
 
@@ -21,6 +22,22 @@ export default function Dashboard({ userKey, onSign, refreshTrigger }: Props) {
   const [actionStatus, setActionStatus] = useState<string | null>(null);
   const [ppuAmount, setPpuAmount] = useState("");
 
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await getSubscription(userKey);
+      setSub(data);
+    } catch {
+      setSub(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [userKey]);
+
+  useEffect(() => {
+    load();
+  }, [load, refreshTrigger]);
+
   async function handleCancel() {
     setActionStatus(null);
     try {
@@ -29,7 +46,8 @@ export default function Dashboard({ userKey, onSign, refreshTrigger }: Props) {
       setActionStatus(`Cancelled. tx: ${hash.slice(0, 12)}…`);
       load();
     } catch (e: unknown) {
-      setActionStatus(`Error: ${e instanceof Error ? e.message : String(e)}`);
+      const rawMessage = e instanceof Error ? e.message : String(e);
+      setActionStatus(`Error: ${friendlyError(rawMessage)}`);
     }
   }
 
@@ -41,7 +59,8 @@ export default function Dashboard({ userKey, onSign, refreshTrigger }: Props) {
       const hash = await onSign(xdr);
       setActionStatus(`Paid! tx: ${hash.slice(0, 12)}…`);
     } catch (e: unknown) {
-      setActionStatus(`Error: ${e instanceof Error ? e.message : String(e)}`);
+      const rawMessage = e instanceof Error ? e.message : String(e);
+      setActionStatus(`Error: ${friendlyError(rawMessage)}`);
     }
   }
 
@@ -109,7 +128,11 @@ export default function Dashboard({ userKey, onSign, refreshTrigger }: Props) {
         /* Dynamic: color is error/success state-driven — inline color is intentional */
         <p
           className="action-status"
-          style={{ color: actionStatus.startsWith("Error") ? "var(--color-danger)" : "var(--color-success)" }}
+          style={{
+            color: actionStatus.startsWith("Error")
+              ? "var(--color-danger)"
+              : "var(--color-success)",
+          }}
         >
           {actionStatus}
         </p>

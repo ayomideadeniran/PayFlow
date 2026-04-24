@@ -15,9 +15,7 @@ export default function App() {
       {/* Header */}
       <div className="app-header">
         <h1 className="app-header__title">⚡ FlowPay</h1>
-        <p className="app-header__subtitle">
-          Decentralized recurring payments on Stellar
-        </p>
+        <p className="app-header__subtitle">Decentralized recurring payments on Stellar</p>
       </div>
 
       {/* Wallet connect */}
@@ -34,11 +32,7 @@ export default function App() {
           </div>
 
           {/* Tabs */}
-          <TabBar
-            tabs={["dashboard", "subscribe"]}
-            activeTab={tab}
-            onTabChange={setTab}
-          />
+          <TabBar tabs={["dashboard", "subscribe"]} activeTab={tab} onTabChange={setTab} />
 
           {/* Content */}
           <div className="card">
@@ -46,14 +40,13 @@ export default function App() {
               <SubscribeForm
                 userKey={publicKey}
                 onSign={signAndSubmit}
-                onSuccess={() => { setTab("dashboard"); setRefresh((r) => r + 1); }}
+                onSuccess={() => {
+                  setTab("dashboard");
+                  setRefresh((r) => r + 1);
+                }}
               />
             ) : (
-              <Dashboard
-                userKey={publicKey}
-                onSign={signAndSubmit}
-                refreshTrigger={refresh}
-              />
+              <Dashboard userKey={publicKey} onSign={signAndSubmit} refreshTrigger={refresh} />
             )}
           </div>
         </>
