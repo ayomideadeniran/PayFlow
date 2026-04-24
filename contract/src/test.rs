@@ -233,6 +233,19 @@ fn test_initialize_backward_compat() {
     assert_eq!(client.get_subscription(&user).unwrap().token, token_b);
 }
 
+// ── Issue #14: cancel nonexistent subscription ───────────────────────────────
+
+/// cancel() must panic with "no subscription found" when called on a user with no subscription.
+#[test]
+#[should_panic(expected = "no subscription found")]
+fn test_cancel_nonexistent() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    
+    let random = Address::generate(&env);
+    client.cancel(&random);
+}
+
 // ── Issue #7: input-validation guards ────────────────────────────────────────
 
 /// subscribe() must panic when amount = 0.
